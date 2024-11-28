@@ -65,7 +65,6 @@ def parse_face(face_str: str) -> Face:
 
 
 def overlay_face(img, face: Face):
-    print(face)
     height, width = img.shape[:2]
     assert height == width
     cy, cx = (height // 2, width // 2)
@@ -81,14 +80,15 @@ def overlay_face(img, face: Face):
                 tile.get_bgr(),
                 4,
             )
-    cv2.imshow("overlay", img)
-    while cv2.waitKey() != 27:
-        pass
+    return img
 
 
 img = cv2.imread("preprocessed/square_cold_flash_08.jpg")
 
-overlay_face(
+overlayed = overlay_face(
     img,
     parse_face("ggr\ngyy\nrwg"),
 )
+cv2.imshow("overlay", overlayed)
+while cv2.waitKey() != 27:
+    pass
