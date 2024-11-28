@@ -149,8 +149,40 @@ def get_stickers(img: Image, face_properties: FaceProperties) -> FaceImages:
     )
 
 
+def get_sticker_color(img: StickerImage) -> Color:
+    avg_color: NDArray[np.uint8] = np.mean(img, axis=(0, 1))
+    colors = (
+        Color.RED,
+        Color.BLUE,
+        Color.GREEN,
+        Color.ORANGE,
+        Color.YELLOW,
+        Color.WHITE,
+    )
+    diffs: dict[Color, int] = dict(
+        map(
+            lambda color: (
+                color,
+                np.sum(
+                    np.abs(
+                        avg_color.astype(np.int16)
+                        - np.array(color.get_bgr(), dtype=np.int16)
+                    )
+                ),
+            ),
+            colors,
+        )
+    )
+    return min(diffs.items(), key=lambda v: v[1])[0]
 
-img: np.ndarray[Any, np.dtype[np.uint8]] = cv2.imread("preprocessed/square_cold_flash_08.jpg") # type: ignore
+
+def extract_face(img: FaceImages) -> Face:
+    return triple(triple(get_sticker_color(sticker) for sticker in row) for row in img)
+
+
+img: np.ndarray[Any, np.dtype[np.uint8]] = cv2.imread(
+    "preprocessed/square_cold_flash_08.jpg"
+)  # type: ignore
 
 height, width = img.shape[:2]
 assert height == width
@@ -163,10 +195,13 @@ for y, row in enumerate(get_stickers(img, face_properties)):
     for x, sticker in enumerate(row):
         cv2.imshow(f"sticker_{x},{y}", sticker)
 
+face = extract_face(get_stickers(img, face_properties))
+print(face)
+
 overlayed = overlay_face(
     img,
     face_properties,
-    parse_face("ggr\ngyy\nrwg"),
+    face,
 )
 cv2.imshow("overlay", overlayed)
 while cv2.waitKey() != 27:
