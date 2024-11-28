@@ -1,5 +1,7 @@
 from enum import Enum
+from typing import NamedTuple
 import cv2
+from dataclasses import dataclass
 
 
 class Color(Enum):
@@ -64,29 +66,75 @@ def parse_face(face_str: str) -> Face:
     return parsed
 
 
-def overlay_face(img, face: Face):
-    height, width = img.shape[:2]
-    assert height == width
-    cy, cx = (height // 2, width // 2)
-    tile_size = int(height * 0.15)
-    tile_size_half = tile_size // 2 - 4
+Point = NamedTuple("Point", [("x", int), ("y", int)])
+Rectangle = NamedTuple("Rectangle", [("start", Point), ("end", Point)])
+
+
+@dataclass
+class FaceProperties:
+    rectangle: Rectangle
+    sticker_margin: int
+
+    @classmethod
+    def centered(cls, width: int, height: int, face_size: int, sticker_margin: int):
+        cy, cx = (height // 2, width // 2)
+        half_face = face_size // 2
+        return cls(
+            Rectangle(
+                Point(cx - half_face, cy - half_face),
+                Point(cx + half_face, cy + half_face),
+            ),
+            sticker_margin,
+        )
+
+    def get_sticker_rectangle(self, x: int, y: int) -> Rectangle:
+        dir = Point(
+            self.rectangle.end.x - self.rectangle.start.x,
+            self.rectangle.end.y - self.rectangle.start.y,
+        )
+        tile_dir = Point(dir.x // 3, dir.y // 3)
+        tile_start = Point(
+            self.rectangle.start.x + tile_dir.x * x + self.sticker_margin,
+            self.rectangle.start.y + tile_dir.y * y + self.sticker_margin,
+        )
+        tile_end = Point(
+            self.rectangle.start.x + tile_dir.x * (x + 1) - self.sticker_margin,
+            self.rectangle.start.y + tile_dir.y * (y + 1) - self.sticker_margin,
+        )
+
+        return Rectangle(tile_start, tile_end)
+
+
+def overlay_face(img, face_properties: FaceProperties, face: Face):
     for y, row in enumerate(face):
         for x, tile in enumerate(row):
-            tile_cy, tile_cx = (y - 1) * tile_size + cy, (x - 1) * tile_size + cx
+            tile_start, tile_end = face_properties.get_sticker_rectangle(x, y)
             cv2.rectangle(
                 img,
-                (tile_cx - tile_size_half, tile_cy - tile_size_half),
-                (tile_cx + tile_size_half, tile_cy + tile_size_half),
+                tile_start,
+                tile_end,
                 tile.get_bgr(),
                 4,
             )
     return img
 
 
+def get_stickers(img):
+    pass
+
+
 img = cv2.imread("preprocessed/square_cold_flash_08.jpg")
+height, width = img.shape[:2]
+assert height == width
+img_size = width
+face_size = int(width * 0.4)
+
+
+face_properties = FaceProperties.centered(width, height, face_size, 2)
 
 overlayed = overlay_face(
     img,
+    face_properties,
     parse_face("ggr\ngyy\nrwg"),
 )
 cv2.imshow("overlay", overlayed)
