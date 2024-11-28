@@ -1,7 +1,11 @@
+from collections.abc import Iterable
 from enum import Enum
-from typing import NamedTuple
+from typing import Any, NamedTuple
 import cv2
+import numpy as np
 from dataclasses import dataclass
+
+from numpy._typing import NDArray
 
 
 class Color(Enum):
@@ -119,18 +123,45 @@ def overlay_face(img, face_properties: FaceProperties, face: Face):
     return img
 
 
-def get_stickers(img):
-    pass
+Image = NDArray[np.uint8]
+StickerImage = Image
+RowImages = tuple[StickerImage, StickerImage, StickerImage]
+FaceImages = tuple[RowImages, RowImages, RowImages]
 
 
-img = cv2.imread("preprocessed/square_cold_flash_08.jpg")
+def crop_rectangle(img: Image, rect: Rectangle) -> StickerImage:
+    return img[rect.start.y : rect.end.y, rect.start.x : rect.end.x, :]
+
+
+def triple[T](iterable: Iterable[T]) -> tuple[T, T, T]:
+    res = tuple(iterable)
+    assert len(res) == 3
+    return res
+
+
+def get_stickers(img: Image, face_properties: FaceProperties) -> FaceImages:
+    return triple(
+        triple(
+            crop_rectangle(img, face_properties.get_sticker_rectangle(x, y))
+            for x in range(3)
+        )
+        for y in range(3)
+    )
+
+
+
+img: np.ndarray[Any, np.dtype[np.uint8]] = cv2.imread("preprocessed/square_cold_flash_08.jpg") # type: ignore
+
 height, width = img.shape[:2]
 assert height == width
 img_size = width
 face_size = int(width * 0.4)
 
+face_properties = FaceProperties.centered(width, height, face_size, 4)
 
-face_properties = FaceProperties.centered(width, height, face_size, 2)
+for y, row in enumerate(get_stickers(img, face_properties)):
+    for x, sticker in enumerate(row):
+        cv2.imshow(f"sticker_{x},{y}", sticker)
 
 overlayed = overlay_face(
     img,
