@@ -32,9 +32,7 @@ class Color(Enum):
                 return (255, 255, 255)
 
     def get_bgr(self) -> tuple[int, int, int]:
-        reversed_color = tuple(reversed(self.get_rgb()))
-        assert len(reversed_color) == 3
-        return reversed_color
+        return triple(reversed(self.get_rgb()))
 
 
 Row = tuple[Color, Color, Color]
@@ -149,6 +147,21 @@ def get_stickers(img: Image, face_properties: FaceProperties) -> FaceImages:
     )
 
 
+def bgr_to_hsv(color: tuple[int, int, int]) -> tuple[int, int, int]:
+    fake_img = np.array(((color,),), dtype=np.uint8)
+
+    return triple(cv2.cvtColor(fake_img, cv2.COLOR_BGR2HSV)[0, 0, :])
+
+
+def color_diff(color_a: tuple[int, int, int], color_b: tuple[int, int, int]) -> int:
+    diff = np.abs(
+        np.array(bgr_to_hsv(color_a), dtype=np.int16)
+        - np.array(bgr_to_hsv(color_b), dtype=np.int16)
+    )
+    diff[0] = diff[0] if diff[0] < 90 else 180 - diff[0]
+    return np.sum(diff)
+
+
 def get_sticker_color(img: StickerImage) -> Color:
     avg_color: NDArray[np.uint8] = np.mean(img, axis=(0, 1))
     colors = (
@@ -161,15 +174,7 @@ def get_sticker_color(img: StickerImage) -> Color:
     )
     diffs: dict[Color, int] = dict(
         map(
-            lambda color: (
-                color,
-                np.sum(
-                    np.abs(
-                        avg_color.astype(np.int16)
-                        - np.array(color.get_bgr(), dtype=np.int16)
-                    )
-                ),
-            ),
+            lambda color: (color, color_diff(color.get_bgr(), tuple(avg_color))),
             colors,
         )
     )
