@@ -1,25 +1,36 @@
 from typing import Any
 import cv2
 import numpy as np
+from find_face import find_face
 from plot import FaceProperties, extract_face, get_stickers, overlay_face
-from utils import Point, Quad
+from utils import Point, Quad, crop_square
 
 
-img: np.ndarray[Any, np.dtype[np.uint8]] = cv2.imread("preprocessed/transformed.jpg")  # type: ignore
+# img: np.ndarray[Any, np.dtype[np.uint8]] = cv2.imread("preprocessed/transformed.jpg")  # type: ignore
 
-height, width = img.shape[:2]
-assert height == width
-img_size = width
-face_size = int(width * 0.4)
+# height, width = img.shape[:2]
+# assert height == width
+# img_size = width
+# face_size = int(width * 0.4)
+
+
+# Open the default camera
+cam = cv2.VideoCapture(0)
+
+# Get the default frame width and height
+frame_width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
+frame_height = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+while True:
+    ret, img = cam.read()
+    # img = crop_square(img, 300)
+    find_face(img)
+    if cv2.waitKey(10) == ord("q"):
+        exit(0)
 
 # face_properties = FaceProperties.centered(width, height, face_size, 0.9)
 face_properties = FaceProperties(
-    Quad(
-        Point(182, 205),
-        Point(263, 205),
-        Point(296, 228),
-        Point(236, 242),
-    ),
+    find_face(img),
     0.9,
 )
 
