@@ -1,41 +1,41 @@
 from typing import Any
-import cv2
 import numpy as np
+import cv2
+import glob
+
 from find_face import find_face
 from plot import FaceProperties, extract_face, get_stickers, overlay_face
-from utils import Image, Point, Quad, crop_square
+from utils import Image
 
 
-# img: np.ndarray[Any, np.dtype[np.uint8]] = cv2.imread("preprocessed/transformed.jpg")  # type: ignore
+# img: Image = cv2.imread("preprocessed/square_cold_noflash_02.jpg")  # type: ignore
+images: dict[str, Image] = {file: cv2.imread(file) for file in glob.glob("preprocessed/*.jpg")} # type: ignore
+# images: dict[str, Image] = {file: cv2.imread(file) for file in glob.glob("preprocessed/square_cold_flash_08.jpg")} # type: ignore
 
-# height, width = img.shape[:2]
-# assert height == width
-# img_size = width
-# face_size = int(width * 0.4)
+for file, img in images.items():
+    quad = find_face(img)
 
+    if quad is None:
+        print(f"could not find face in image {file}")
+        continue
 
-# Open the default camera
-cam = cv2.VideoCapture(0)
+    height, width = img.shape[:2]
+    assert height == width
+    img_size = width
+    face_size = int(width * 0.4)
 
-# Get the default frame width and height
-frame_width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
-frame_height = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    face_properties = FaceProperties(quad, 0.9)
+    face = extract_face(get_stickers(img, face_properties))
 
-while True:
-    img: Image
-    ret, img = cam.read()  # type: ignore
-    # img = crop_square(img, 300)
-    quad = find_face(img, debug=True)
-    if quad is not None:
-        face_properties = FaceProperties(quad, 0.9)
-        face = extract_face(get_stickers(img, face_properties))
+    overlayed = overlay_face(
+        img,
+        face_properties,
+        face,
+    )
+    cv2.imshow(f"overlay_{file}", overlayed)
 
-        overlayed = overlay_face(
-            img,
-            face_properties,
-            face,
-        )
-        cv2.imshow("overlay", overlayed)
+while cv2.waitKey(0) != ord("q"):
+    pass
 
-    if cv2.waitKey(10) == ord("q"):
-        exit(0)
+exit(0)
+
