@@ -1,13 +1,19 @@
-from collections.abc import Iterable
-from typing import Any, NamedTuple
+from typing import Any
 import cv2
 import numpy as np
-from dataclasses import dataclass
-
-from numpy._typing import NDArray
+from numpy.typing import NDArray
 
 from color import Color
-from utils import Image, Point, Rectangle, crop_rectangle, triple
+from utils import (
+    Image,
+    Point,
+    Quad,
+    crop_quad,
+    normalize_vec2,
+    rectangle,
+    scale_matrix,
+    triple,
+)
 
 Row = tuple[Color, Color, Color]
 Face = tuple[Row, Row, Row]
@@ -25,52 +31,63 @@ def parse_face(face_str: str) -> Face:
     return parsed
 
 
-
-@dataclass
 class FaceProperties:
-    rectangle: Rectangle
-    sticker_margin: int
+    quad: Quad
+    sticker_size: float  # 0 to 1
+    perspective_transform: NDArray[np.float32]
+    inverted_perspective_transform: NDArray[np.float32]
+
+    def __init__(self, quad: Quad, sticker_size: float) -> None:
+        self.quad = quad
+        self.sticker_size = sticker_size
+        pts1 = np.array(quad, dtype=np.float32)
+        pts2 = np.array([[0, 0], [1, 0], [1, 1], [0, 1]], dtype=np.float32)
+        self.perspective_transform = cv2.getPerspectiveTransform(pts1, pts2)  # type: ignore
+        self.inverted_perspective_transform = np.linalg.inv(self.perspective_transform)
 
     @classmethod
-    def centered(cls, width: int, height: int, face_size: int, sticker_margin: int):
+    def centered(cls, width: int, height: int, face_size: int, sticker_size: float):
         cy, cx = (height // 2, width // 2)
         half_face = face_size // 2
         return cls(
-            Rectangle(
+            rectangle(
                 Point(cx - half_face, cy - half_face),
                 Point(cx + half_face, cy + half_face),
             ),
-            sticker_margin,
+            sticker_size,
         )
 
-    def get_sticker_rectangle(self, x: int, y: int) -> Rectangle:
-        dir = Point(
-            self.rectangle.end.x - self.rectangle.start.x,
-            self.rectangle.end.y - self.rectangle.start.y,
+    def get_sticker_quad(self, x: int, y: int) -> Quad:
+        return Quad(
+            *(
+                Point(
+                    *normalize_vec2(
+                        self.inverted_perspective_transform
+                        @ scale_matrix(1 / 3, 1 / 3)
+                        @ np.append(
+                            (np.array(point, dtype=np.float32) - 0.5)
+                            * self.sticker_size
+                            + 0.5
+                            + np.array((x, y), np.float32),
+                            [1],
+                        )
+                    )[:2]
+                )
+                for point in ((0, 0), (1, 0), (1, 1), (0, 1))
+            )
         )
-        tile_dir = Point(dir.x // 3, dir.y // 3)
-        tile_start = Point(
-            self.rectangle.start.x + tile_dir.x * x + self.sticker_margin,
-            self.rectangle.start.y + tile_dir.y * y + self.sticker_margin,
-        )
-        tile_end = Point(
-            self.rectangle.start.x + tile_dir.x * (x + 1) - self.sticker_margin,
-            self.rectangle.start.y + tile_dir.y * (y + 1) - self.sticker_margin,
-        )
-
-        return Rectangle(tile_start, tile_end)
 
 
 def overlay_face(img, face_properties: FaceProperties, face: Face):
     for y, row in enumerate(face):
         for x, tile in enumerate(row):
-            tile_start, tile_end = face_properties.get_sticker_rectangle(x, y)
-            cv2.rectangle(
+            quad = np.array(face_properties.get_sticker_quad(x, y), dtype=np.int32)
+            cv2.drawContours(
                 img,
-                tile_start,
-                tile_end,
+                [quad],
+                0,
                 tile.get_bgr(),
-                4,
+                2,
             )
     return img
 
@@ -83,7 +100,7 @@ FaceImages = tuple[RowImages, RowImages, RowImages]
 def get_stickers(img: Image, face_properties: FaceProperties) -> FaceImages:
     return triple(
         triple(
-            crop_rectangle(img, face_properties.get_sticker_rectangle(x, y))
+            crop_quad(img, face_properties.get_sticker_quad(x, y), 20, 20)
             for x in range(3)
         )
         for y in range(3)
@@ -128,16 +145,23 @@ def extract_face(img: FaceImages) -> Face:
     return triple(triple(get_sticker_color(sticker) for sticker in row) for row in img)
 
 
-img: np.ndarray[Any, np.dtype[np.uint8]] = cv2.imread(
-    "preprocessed/square_cold_flash_08.jpg"
-)  # type: ignore
+img: np.ndarray[Any, np.dtype[np.uint8]] = cv2.imread("preprocessed/transformed.jpg")  # type: ignore
 
 height, width = img.shape[:2]
 assert height == width
 img_size = width
 face_size = int(width * 0.4)
 
-face_properties = FaceProperties.centered(width, height, face_size, 4)
+# face_properties = FaceProperties.centered(width, height, face_size, 0.9)
+face_properties = FaceProperties(
+    Quad(
+        Point(182, 205),
+        Point(263, 205),
+        Point(296, 228),
+        Point(236, 242),
+    ),
+    0.9,
+)
 
 face = extract_face(get_stickers(img, face_properties))
 print(face)
