@@ -29,108 +29,107 @@ def find_closest(value_list: list[float], n: int, expand_with_delta: float = 0):
     return tuple(original_index for original_index, _ in l[first : last + 1])
 
 
-def find_face(img: MatLike) -> Optional[Quad]:
+def all_right_angles(shape: MatLike):
+    assert len(shape) >= 3
+    cycled_approx = np.append(shape.copy(), [shape[0], shape[1]], axis=0)
+    for a, b, c in zip(cycled_approx, cycled_approx[1:], cycled_approx[2:]):
+        ab = b[0] - a[0]
+        bc = c[0] - b[0]
+        inner = np.dot(ab, bc) / (np.linalg.vector_norm(ab) * np.linalg.vector_norm(bc))
+        if inner < -1 or inner > 1:
+            return False
+        angle = math.acos(inner)
+        right_angle = abs(angle - math.pi / 2) < math.pi / 10
+        almost_360 = abs(angle - math.pi * 2) < math.pi / 5
+        almost_180 = abs(angle - math.pi) < math.pi / 5
+        if not right_angle and not almost_360 and not almost_180:
+            return False
+    return True
+
+
+def find_face(img: MatLike, debug=False, extra_debug=False) -> Optional[Quad]:
+    height, width = img.shape[:2]
+    img_size = min(width, height)
+    scale_factor = height / 300
+    minimum_face_size = 0.15 * img_size
+
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
-    cv2.imshow("original", img)
-    cv2.imshow("hsv", hsv)
+    if extra_debug:
+        cv2.imshow("original", img)
 
-    height, width = img.shape[:2]
-    scale_factor = height / 300
-    vivid_colors = np.zeros((height, width, 1), dtype=np.uint8)
-    for y in range(height):
-        for x in range(width):
-            if (
-                hsv[y, x, 1] > 100 and hsv[y, x, 2] > 100
-                # or (hsv[y, x, 1] < 20 and hsv[y, x, 2] > 165)
-            ):
-                vivid_colors[y, x, :] = 255
-    cv2.imshow("vivid_colors", vivid_colors)
+    # _ret, thresh = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    edges = cv2.Canny(img, 110, 240)
+    edges = cv2.blur(edges, (5, 5))
+    ret, edges = cv2.threshold(255 - edges, 240, 255, cv2.THRESH_BINARY)
 
-    face_blob = vivid_colors.copy()
-    blur_size = int(20 * scale_factor) * 2 + 1
-    face_blob = cv2.blur(face_blob, (blur_size, blur_size))
-    # cv2.imshow("blur", face_blob)
-    _ret, face_blob = cv2.threshold(face_blob, 50, 255, cv2.THRESH_BINARY)
-    # print(face_blob)
-    # cv2.imshow("thresh", face_blob)
+    if debug:
+        cv2.imshow("edges", edges)
 
-    with_contours = img.copy()
+    contour_image = np.zeros_like(img)
+    dilated_contours = np.zeros_like(img)
+
     contours, hierarchy = cv2.findContours(
-        face_blob, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
-    )
-    if len(contours) == 0:
-        return None
-    cv2.drawContours(with_contours, contours, -1, (0, 255, 0), 3)
-    # cv2.imshow("contours", with_contours)
-
-    max_contour = max(contours, key=lambda contour: cv2.contourArea(contour))
-    bbx, bby, bbwidth, bbheight = cv2.boundingRect(max_contour)
-    margin = int(20 * scale_factor)
-    bbx -= margin
-    bby -= margin
-    bbwidth += margin * 2
-    bbheight += margin * 2
-    if bbx < 0:
-        bbwidth += abs(bbx)
-        bbx = 0
-    if bby < 0:
-        bbheight += abs(bby)
-        bby = 0
-    # print(bbx, bby, bbwidth, bbheight)
-    if bbwidth == 0 or bbheight == 0:
-        return None
-
-    roi = vivid_colors[bby : bby + bbheight, bbx : bbx + bbwidth, :]
-
-    cv2.imshow("roi", roi)
-
-    roi_scale_factor = 180 / min(bbwidth, bbheight)
-
-    # Edge detection
-    edges = cv2.Canny(roi, 20, 200, None, 3)
-    kernel = np.ones((3, 3), np.uint8)
-    edges = cv2.dilate(edges, kernel)
-
-    cv2.imshow("edges", edges)
-
-    cdst = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-    cdst2 = cdst.copy()
-
-    lines = cv2.HoughLinesP(
-        edges,
-        1,
-        np.pi / 180,
-        int(40 * roi_scale_factor),
-        None,
-        int(20 * roi_scale_factor),
-        int(40 * roi_scale_factor),
+        edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
     )
 
-    line_lengths = []
-    if lines is None:
-        return None
-    for i in range(0, len(lines)):
-        l = lines[i][0]
-        line_lengths.append(math.sqrt((l[0] - l[2]) ** 2 + (l[1] - l[3]) ** 2))
-        cv2.line(cdst, (l[0], l[1]), (l[2], l[3]), (0, 0, 255), 3, cv2.LINE_AA)
+    contour_image_approx = np.zeros_like(img)
 
-    cv2.imshow("lines", cdst)
+    cv2.drawContours(contour_image, contours, -1, (0, 255, 0), 1)
 
-    if len(line_lengths) < 4:
-        return None
-    line_indices = find_closest(line_lengths, 4, expand_with_delta=2 * roi_scale_factor)
-    print(line_lengths[line_indices[len(line_indices) // 2]], line_indices)
+    filtered_contours = np.zeros_like(edges)
 
-    for i in line_indices:
-        l = lines[i][0]
-        cv2.line(cdst2, (l[0], l[1]), (l[2], l[3]), (0, 0, 255), 3, cv2.LINE_AA)
+    for contour in contours:
+        epsilon = 0.04 * cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, epsilon, True)
+        has_non_right_angle = True
+        if len(approx) < 4:
+            continue
 
-    cv2.imshow("lines2", cdst2)
+        if not all_right_angles(approx):
+            cv2.drawContours(contour_image_approx, [approx], -1, (0, 0, 255), 1)
+            continue
+        contour_area = cv2.contourArea(contour)
+        if contour_area < 80 or contour_area > width * height * 0.5:
+            continue
+        cv2.drawContours(contour_image_approx, [approx], -1, (0, 255, 0), 1)
+        cv2.drawContours(filtered_contours, [approx], -1, (255,), -1)
 
-    return Quad(
-        Point(0, 0),
-        Point(100, 0),
-        Point(100, 100),
-        Point(0, 100),
+    # cv2.ContourApproximationModes
+
+    if extra_debug:
+        cv2.imshow("contours", contour_image)
+        cv2.imshow("filtered contours", filtered_contours)
+    if debug:
+        cv2.imshow("contours approx", contour_image_approx)
+
+    filtered_contours = cv2.dilate(filtered_contours, np.ones((13, 13), dtype=np.uint8))
+    # filtered_contours = cv2.blur(filtered_contours, (21, 21))
+    # ret, filtered_contours = cv2.threshold(filtered_contours, 100, 255, cv2.THRESH_BINARY)
+    if extra_debug:
+        cv2.imshow("blurred filtered contours", filtered_contours)
+
+    contours, hierarchy = cv2.findContours(
+        filtered_contours, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
     )
+
+    areas = []
+
+    for contour in contours:
+        contour_area = cv2.contourArea(contour)
+        epsilon = 0.08 * cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, epsilon, True)
+        if len(approx) != 4:
+            continue
+        areas.append((contour_area, approx))
+
+    if len(areas) == 0:
+        return None
+    face_contour = max(areas, key=lambda i: i[0])[1]
+
+    output_roi = img.copy()
+    cv2.drawContours(output_roi, [face_contour], -1, (0, 255, 0), 5)
+    if debug:
+        cv2.imshow("output", output_roi)
+
+    return Quad(*(Point(*face_contour[i, 0, :]) for i in range(4)))

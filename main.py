@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 from find_face import find_face
 from plot import FaceProperties, extract_face, get_stickers, overlay_face
-from utils import Point, Quad, crop_square
+from utils import Image, Point, Quad, crop_square
 
 
 # img: np.ndarray[Any, np.dtype[np.uint8]] = cv2.imread("preprocessed/transformed.jpg")  # type: ignore
@@ -22,26 +22,20 @@ frame_width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
 frame_height = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
 while True:
-    ret, img = cam.read()
+    img: Image
+    ret, img = cam.read()  # type: ignore
     # img = crop_square(img, 300)
-    find_face(img)
+    quad = find_face(img, debug=True)
+    if quad is not None:
+        face_properties = FaceProperties(quad, 0.9)
+        face = extract_face(get_stickers(img, face_properties))
+
+        overlayed = overlay_face(
+            img,
+            face_properties,
+            face,
+        )
+        cv2.imshow("overlay", overlayed)
+
     if cv2.waitKey(10) == ord("q"):
         exit(0)
-
-# face_properties = FaceProperties.centered(width, height, face_size, 0.9)
-face_properties = FaceProperties(
-    find_face(img),
-    0.9,
-)
-
-face = extract_face(get_stickers(img, face_properties))
-print(face)
-
-overlayed = overlay_face(
-    img,
-    face_properties,
-    face,
-)
-cv2.imshow("overlay", overlayed)
-while cv2.waitKey() != 27:
-    pass
