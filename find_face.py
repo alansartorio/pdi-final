@@ -24,23 +24,44 @@ def all_right_angles(shape: MatLike):
             return False
     return True
 
+
+def ones_circle(size: int):
+    radius = size // 2
+    arr = np.arange(-radius, radius + 1) ** 2
+    out = np.add.outer(arr, arr) < radius**2
+    return out.astype(np.uint8)
+
+
+def does_contour_touch_border(contour: MatLike, width, height):
+    for ((x, y),) in contour:
+        if x == 0 or y == 0 or x == width - 1 or y == height - 1:
+            return True
+
+    return False
+
+
 def find_face(img: MatLike, debug=False, extra_debug=False) -> Optional[Quad]:
     height, width = img.shape[:2]
     img_size = min(width, height)
-    minimum_face_size = 0.15 * img_size
+    minimum_face_size = 0.10 * img_size
     maximum_face_size = 0.98 * img_size
 
     if extra_debug:
         cv2.imshow("original", img)
 
-    edges = cv2.Canny(img, 100, 130)
+    edges = cv2.Canny(img, 100, 170)
     ret, edges = cv2.threshold(255 - edges, 240, 255, cv2.THRESH_BINARY)
-    edges = cv2.morphologyEx(edges, cv2.MORPH_OPEN, np.ones((12, 12), dtype=np.uint8))
-    edges = cv2.erode(edges, np.ones((3, 3), dtype=np.uint8))
+
+    if extra_debug:
+        cv2.imshow("edges1", edges)
+    edges = cv2.morphologyEx(edges, cv2.MORPH_OPEN, ones_circle(4))
+
+    if extra_debug:
+        cv2.imshow("edges2", edges)
+    edges = cv2.erode(edges, ones_circle(4))
 
     if debug:
         cv2.imshow("edges", edges)
-
 
     contour_image = np.zeros_like(img)
 
@@ -64,10 +85,15 @@ def find_face(img: MatLike, debug=False, extra_debug=False) -> Optional[Quad]:
         while next != -1:
             children_area += areas[next]
             next = hierarchy[next][0]
-        if children_area > 0 and children_area > minimum_face_size ** 2:
+        if children_area > 0 and children_area > minimum_face_size**2:
             cv2.drawContours(contour_image_approx, [contour], -1, (255, 0, 255), 1)
-            cv2.drawContours(contour_image_approx, contours, first_child, (0, 255, 255), 3)
+            cv2.drawContours(
+                contour_image_approx, contours, first_child, (0, 255, 255), 3
+            )
             continue
+        if does_contour_touch_border(contour, width, height):
+            continue
+        # epsilon = minimum_face_size / 3 * 4 * .1
         epsilon = 0.05 * cv2.arcLength(contour, True)
         approx = cv2.approxPolyDP(contour, epsilon, True)
         if len(approx) < 4:
@@ -93,7 +119,9 @@ def find_face(img: MatLike, debug=False, extra_debug=False) -> Optional[Quad]:
     if debug:
         cv2.imshow("contours approx", contour_image_approx)
 
-    filtered_contours = cv2.morphologyEx(filtered_contours, cv2.MORPH_CLOSE, np.ones((31, 31), dtype=np.uint8))
+    filtered_contours = cv2.morphologyEx(
+        filtered_contours, cv2.MORPH_CLOSE, np.ones((31, 31), dtype=np.uint8)
+    )
     if extra_debug:
         cv2.imshow("blurred filtered contours", filtered_contours)
 
