@@ -79,6 +79,7 @@ class FaceProperties:
 
 
 def overlay_face(img, face_properties: FaceProperties, face: Face):
+    img = img.copy()
     for y, row in enumerate(face):
         for x, tile in enumerate(row):
             quad = np.array(face_properties.get_sticker_quad(x, y), dtype=np.int32)
