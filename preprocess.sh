@@ -3,7 +3,7 @@
 rm -rf preprocessed
 mkdir -p preprocessed
 
-find original -type f -name "*.jpg" | \
+find original -type f -name "*.jpg" -not -path "*/_*" | \
     while read file;
     do
         basename=${file#original/}
