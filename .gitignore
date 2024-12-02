@@ -1,3 +1,6 @@
 .venv
 __pycache__
 *.pdf
+/dist
+mermaid-filter.err
+master.tar.gz
