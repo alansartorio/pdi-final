@@ -93,11 +93,25 @@ Se identifican los contornos que corresponden a la cara del cubo mediante el sig
 
 ## Contornos
 
-![](output/07_find_quad.png){.r-stretch}
+## Rectificación de cara
+
+Mediante `getPerspectiveTransform` conseguimos la matriz de transformación que transforma de coordenadas de pixel a coordenadas de [0, 1] dentro de la cara
+
+:::{.container}
+
+![](output/07_find_quad.png)
+
+![](output/rectified_face.png)
+
+![](output/rectified_stickers.png)
+
+:::
 
 ## Obtención de colores
 
-Teniendo el contorno de la cara, se procede a dividir el área en nueve y encontrar el color que más se asemeje al de cada sección.
+Teniendo una imagen por cada sticker se busca el color valido que más se asemeje para cada una.
+
+![](output/overlayed.png){.r-stretch}
 
 # Resultados
 
